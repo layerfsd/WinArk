@@ -9,6 +9,8 @@ using namespace WinSys;
 LRESULT CSystemConfigDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
 	//DlgResize_Init(true);
 	m_CheckImageLoad.Attach(GetDlgItem(IDC_INTERCEPT_DRIVER));
+	m_CheckDriverLoad.Attach(GetDlgItem(IDC_DISABLE_DRIVER_LOAD));
+	m_CheckLogHash.Attach(GetDlgItem(IDC_LOG_HASH));
 	m_List.Attach(GetDlgItem(IDC_DEBUGGER_LIST));
 	m_List.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_INFOTIP | LVS_EX_GRIDLINES);
 	
@@ -39,6 +41,16 @@ LRESULT CSystemConfigDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM 
 	std::string brand = SystemInformation::GetCpuBrand();
 	SetDlgItemTextA(m_hWnd, IDC_PROCESSOR, brand.c_str());
 
+	GetFirmwareEnvironmentVariable(L"",
+		L"{00000000-0000-0000-0000-000000000000}", 
+		nullptr, 0);
+	if (GetLastError() == ERROR_INVALID_FUNCTION) {
+		SetDlgItemText(IDC_BOOT_MODE, L"Legacy");
+	}
+	else {
+		SetDlgItemText(IDC_BOOT_MODE, L"UEFI");
+	}
+
 	return TRUE;
 }
 
@@ -63,6 +75,34 @@ LRESULT CSystemConfigDlg::OnSetCallback(WORD /*wNotifyCode*/, WORD /*wID*/, HWND
 		if (success)
 			m_CheckImageLoad.EnableWindow(FALSE);
 	}
+	checkCode = m_CheckDriverLoad.GetCheck();
+	if (checkCode == BST_CHECKED) {
+		count += 1;
+		CiSymbols symbols;
+		success = InitCiSymbols(&symbols);
+		if(success)
+			success = DriverHelper::DisableDriverLoad(&symbols);
+		if (success)
+			m_CheckDriverLoad.EnableWindow(FALSE);
+		else {
+			AtlMessageBox(m_hWnd, L"Failed to disable driver load", IDS_TITLE, MB_ICONERROR);
+			return FALSE;
+		}
+	}
+	checkCode = m_CheckLogHash.GetCheck();
+	if (checkCode == BST_CHECKED) {
+		count += 1;
+		CiSymbols symbols;
+		success = InitCiSymbols(&symbols);
+		if (success)
+			success = DriverHelper::StartLogDriverHash(&symbols);
+		if (success)
+			m_CheckLogHash.EnableWindow(FALSE);
+		else {
+			AtlMessageBox(m_hWnd, L"Failed to enable log driver load hash", IDS_TITLE, MB_ICONERROR);
+			return FALSE;
+		}
+	}
 
 	if (count == 0) {
 		AtlMessageBox(m_hWnd, L"You should select one config", L"Error", MB_ICONERROR);
@@ -81,6 +121,19 @@ LRESULT CSystemConfigDlg::OnRemoveCallback(WORD /*wNotifyCode*/, WORD /*wID*/, H
 		if (success)
 			m_CheckImageLoad.EnableWindow(TRUE);
 	}
+	checkCode = m_CheckDriverLoad.GetCheck();
+	if (checkCode == BST_CHECKED) {
+		success = DriverHelper::EnableDriverLoad();
+		if (success)
+			m_CheckDriverLoad.EnableWindow(TRUE);
+	}
+	checkCode = m_CheckLogHash.GetCheck();
+	if (checkCode == BST_CHECKED) {
+		success = DriverHelper::StopLogDriverHash();
+		if (success)
+			m_CheckLogHash.EnableWindow(TRUE);
+	}
+
 
 	GetDlgItem(IDC_SET_CALLBACK).EnableWindow(TRUE);
 	GetDlgItem(IDC_REMOVE_CALLBACK).EnableWindow(FALSE);
@@ -412,9 +465,9 @@ bool CSystemConfigDlg::InitEthreadOffsets(DbgSysCoreInfo* pInfo) {
 
 	pInfo->EthreadOffsets.ClonedThread = SymbolHelper::GetKernelStructMemberOffset("_ETHREAD", "ClonedThread");
 	if (pInfo->EthreadOffsets.ClonedThread != -1) {
-		USHORT pos = SymbolHelper::GetKernelBitFieldPos("_ETHREAD", "ClonedThread");
+		ULONG pos = SymbolHelper::GetKernelBitFieldPos("_ETHREAD", "ClonedThread");
 		pInfo->EthreadOffsets.ClonedThreadBitField.Position = pos;
-		USHORT size = SymbolHelper::GetKernelStructMemberSize("_ETHREAD", "ClonedThread");
+		ULONG size = SymbolHelper::GetKernelStructMemberSize("_ETHREAD", "ClonedThread");
 		pInfo->EthreadOffsets.ClonedThreadBitField.Size = size;
 	}
 	else {
@@ -427,9 +480,9 @@ bool CSystemConfigDlg::InitEthreadOffsets(DbgSysCoreInfo* pInfo) {
 
 	pInfo->EthreadOffsets.ThreadInserted = SymbolHelper::GetKernelStructMemberOffset("_ETHREAD", "ThreadInserted");
 	if (pInfo->EthreadOffsets.ThreadInserted != -1) {
-		USHORT pos = SymbolHelper::GetKernelBitFieldPos("_ETHREAD", "ThreadInserted");
+		ULONG pos = SymbolHelper::GetKernelBitFieldPos("_ETHREAD", "ThreadInserted");
 		pInfo->EthreadOffsets.ThreadInsertedBitField.Position = pos;
-		USHORT size = SymbolHelper::GetKernelStructMemberSize("_ETHREAD", "ThreadInserted");
+		ULONG size = SymbolHelper::GetKernelStructMemberSize("_ETHREAD", "ThreadInserted");
 		pInfo->EthreadOffsets.ThreadInsertedBitField.Size = size;
 	}
 	else {
@@ -505,4 +558,16 @@ LRESULT CSystemConfigDlg::OnRemoveDebugger(WORD /*wNotifyCode*/, WORD /*wID*/, H
 	}
 	m_List.DeleteItem(index);
 	return 0;
+}
+
+bool CSystemConfigDlg::InitCiSymbols(CiSymbols* pSym) {
+	pSym->MinCryptIsFileRevoked = (void*)SymbolHelper::GetCiSymbolAddressFromName("MinCryptIsFileRevoked");
+	if (pSym->MinCryptIsFileRevoked == nullptr)
+		return false;
+
+	pSym->I_MinCryptHashSearchCompare = (void*)SymbolHelper::GetCiSymbolAddressFromName("I_MinCryptHashSearchCompare");
+	if (pSym->I_MinCryptHashSearchCompare == nullptr)
+		return false;
+
+	return true;
 }

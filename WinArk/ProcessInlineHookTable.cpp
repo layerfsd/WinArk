@@ -7,6 +7,7 @@
 #include "ClipboardHelper.h"
 
 
+
 #pragma comment(lib,"capstone.lib")
 
 
@@ -244,8 +245,9 @@ bool CProcessInlineHookTable::IsInCodeBlock(ULONG_PTR address) {
 	return false;
 }
 
-void CProcessInlineHookTable::CheckX86HookType1(cs_insn* insn, size_t j, size_t count, ULONG_PTR moduleBase, SIZE_T moduleSize) {
-	cs_detail* d1, * d2;
+void CProcessInlineHookTable::CheckX86HookType1(cs_insn* insn, size_t j, size_t count, ULONG_PTR moduleBase, SIZE_T moduleSize,
+	bool isCheckCode, PBYTE pMem) {
+	cs_detail* d1;
 	d1 = insn[j].detail;
 	if (d1 == nullptr)
 		return;
@@ -286,19 +288,25 @@ void CProcessInlineHookTable::CheckX86HookType1(cs_insn* insn, size_t j, size_t 
 		return;
 	}
 
-	InlineHookInfo info;
-	info.TargetAddress = targetAddress;
-	info.TargetModule = L"Unknown";
-	auto m = GetModuleByAddress(targetAddress);
-	if (m != nullptr) {
-		info.TargetModule = m->Path;
+	auto m = GetModuleByAddress(insn[j].address);
+	if (isCheckCode && m!=nullptr) {
+		if (!CheckCode(insn[j].address, 5, (ULONG_PTR)m->ImageBase,
+			m->ModuleSize, pMem))
+			return;
 	}
+	InlineHookInfo info;
 	info.Type = HookType::x86HookType1;
 	info.Address = insn[j].address;
-	m = GetModuleByAddress(info.Address);
 	info.Name = L"Unknown";
 	if (m != nullptr)
 		info.Name = m->Name;
+	info.TargetAddress = targetAddress;
+	info.TargetModule = L"Unknown";
+	m = GetModuleByAddress(targetAddress);
+	if (m != nullptr) {
+		info.TargetModule = m->Path;
+	}
+	
 	m_Table.data.info.push_back(info);
 }
 
@@ -332,7 +340,7 @@ void CProcessInlineHookTable::CheckX86HookType2(cs_insn* insn, size_t j, size_t 
 	if (d2->x86.op_count != 0)
 		return;
 
-	ULONG targetAddress = d1->x86.operands[0].imm;
+	ULONG_PTR targetAddress = d1->x86.operands[0].imm;
 	SIZE_T size;
 	ULONG dummy;
 	bool success = ::ReadProcessMemory(m_hProcess, (LPVOID)targetAddress, &dummy, 4, &size);
@@ -398,7 +406,7 @@ void CProcessInlineHookTable::CheckX86HookType3(cs_insn* insn, size_t j, size_t 
 	if (d1->x86.operands[0].reg != d2->x86.operands[0].reg)
 		return;
 
-	ULONG targetAddress = d1->x86.operands[1].imm;
+	ULONG_PTR targetAddress = d1->x86.operands[1].imm;
 	// 排除无效的内存地址
 	SIZE_T size;
 	ULONG dummy;
@@ -438,7 +446,7 @@ void CProcessInlineHookTable::CheckX86HookType6(cs_insn* insn, size_t j, size_t 
 	if (d2 == nullptr)
 		return;
 
-	if (d2->x86.opcode[0] != 0xE8)
+	if (d2->x86.opcode[0] != 0xEB)
 		return;
 
 	if (strcmp(insn[j + 1].mnemonic, "jmp"))
@@ -474,32 +482,251 @@ void CProcessInlineHookTable::CheckX86HookType6(cs_insn* insn, size_t j, size_t 
 	m_Table.data.info.push_back(info);
 }
 
-void CProcessInlineHookTable::CheckInlineHook(uint8_t* code, size_t codeSize, uint64_t address, ULONG_PTR moduleBase, SIZE_T moduleSize) {
-	// 反汇编时间较长的情况下，会卡UI
-	size_t count;
-	cs_insn* insn;
-	if (_x64) {
-		count = cs_disasm(_x64handle, code, codeSize, address, 0, &insn);
-		if (count > 0) {
-			for (size_t j = 0; j < count; j++) {
-				CheckX64HookType1(insn, j, count, moduleBase, moduleSize, address, codeSize);
-				CheckX64HookType2(insn, j, count);
-				CheckX64HookType4(insn, j, count, moduleBase, moduleSize, address, codeSize);
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+
+void CProcessInlineHookTable::CheckInlineHook(uint8_t* code, size_t codeSize,
+	uint64_t address, ULONG_PTR moduleBase,
+	SIZE_T moduleSize, bool isX64Module, bool isCheckCode, PBYTE pMem){
+	ULONG_PTR startAddr = (ULONG_PTR)code;
+	ULONG_PTR maxSearchAddr = startAddr + codeSize;
+	size_t count = 0;
+	cs_insn* insn = nullptr;
+
+
+
+	ULONG_PTR searchAddr = startAddr;
+	UCHAR x64HookType1[] = "\x48\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc\xcc";
+	ULONG patternSize = sizeof(x64HookType1) - 1;
+	ULONG remainSize = codeSize;
+	ULONG offset = 0;
+
+	if (isX64Module) {
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
 			}
-			cs_free(insn, count);
+			bool find = Helpers::SearchPattern(x64HookType1, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x64handle, (uint8_t*)pFound, 12, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX64HookType1(insn, 0, count, moduleBase, moduleSize, address, codeSize);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
+		}
+
+		searchAddr = startAddr;
+		UCHAR x64HookType2[] = "\x68\xcc\xcc\xcc\xcc\xc7\x44\x24\x04\xcc\xcc\xcc\xcc";
+		patternSize = sizeof(x64HookType2) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
+			}
+			bool find = Helpers::SearchPattern(x64HookType2, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x64handle, (uint8_t*)pFound, 16, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX64HookType2(insn, 0, count);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
+		}
+
+		searchAddr = startAddr;
+		UCHAR x64HookType4[] = "\xe9\xcc\xcc\xcc\xcc";
+		patternSize = sizeof(x64HookType4) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
+			}
+			bool find = Helpers::SearchPattern(x64HookType4, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x64handle, (uint8_t*)pFound, 16, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX64HookType4(insn, 0, count, moduleBase,
+						moduleSize, address, codeSize, isCheckCode, pMem);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
 		}
 	}
-	else {
 
-		count = cs_disasm(_x86handle, code, codeSize, address, 0, &insn);
-		if (count > 0) {
-			for (size_t j = 0; j < count; j++) {
-				CheckX86HookType1(insn, j, count, moduleBase, moduleSize);
-				CheckX86HookType2(insn, j, count);
-				CheckX86HookType3(insn, j, count);
-				CheckX86HookType6(insn, j, count);
+	if (!_x64) {
+		searchAddr = startAddr;
+		UCHAR x86HookType1[] = "\xe9\xcc\xcc\xcc\xcc";
+		patternSize = sizeof(x86HookType1) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
 			}
-			cs_free(insn, count);
+			bool find = Helpers::SearchPattern(x86HookType1, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x86handle, (uint8_t*)pFound, 5, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX86HookType1(insn, 0, count, moduleBase, moduleSize, isCheckCode, pMem);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
+		}
+
+		searchAddr = startAddr;
+		UCHAR x86HookType2[] = "\x68\xcc\xcc\xcc\xcc";
+		patternSize = sizeof(x86HookType2) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
+			}
+			bool find = Helpers::SearchPattern(x86HookType2, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x86handle, (uint8_t*)pFound, 7, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX86HookType2(insn, 0, count);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
+		}
+
+		searchAddr = startAddr;
+		UCHAR x86HookType3[] = "\xB8\xcc\xcc\xcc\xcc\xff\xe0";
+		patternSize = sizeof(x86HookType3) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
+			}
+			bool find = Helpers::SearchPattern(x86HookType3, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x86handle, (uint8_t*)pFound, 7, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX86HookType3(insn, 0, count);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
+		}
+
+		searchAddr = startAddr;
+		UCHAR x86HookType6[] = "\xe9\xcc\xcc\xcc\xcc\xeb\xcc";
+		patternSize = sizeof(x86HookType6) - 1;
+		remainSize = codeSize;
+		offset = 0;
+
+		while (searchAddr <= maxSearchAddr) {
+			PVOID pFound = NULL;
+			if (remainSize < patternSize) {
+				break;
+			}
+			bool find = Helpers::SearchPattern(x86HookType3, 0xCC, patternSize,
+				(void*)searchAddr, remainSize, &pFound);
+			if (find) {
+				if (pFound == NULL) {
+					ATLASSERT(FALSE);
+				}
+				searchAddr = (ULONG_PTR)pFound + patternSize;
+				offset = (ULONG_PTR)pFound - startAddr;
+				ULONG_PTR addr = address + offset;
+				count = cs_disasm(_x86handle, (uint8_t*)pFound, 7, addr,
+					0, &insn);
+				if (count > 0) {
+					CheckX86HookType6(insn, 0, count);
+					cs_free(insn, count);
+				}
+			}
+			else {
+				break;
+			}
+			remainSize = maxSearchAddr - searchAddr;
 		}
 	}
 }
@@ -538,15 +765,62 @@ void CProcessInlineHookTable::Refresh() {
 			}
 			address = (ULONG_PTR)block->BaseAddress;
 			auto m = GetModuleByAddress(address);
+			bool isX64Module = true;
+			bool isCheckCode = true;
+			void* local_image_base = nullptr;
 			if (m != nullptr) {
 				moduleSize = m->ModuleSize;
 				moduleBase = (ULONG_PTR)m->Base;
+				std::wstring path = m->Path;
+				PEParser parser(path.c_str());
+				isX64Module = parser.IsPe64();
+
+				uint32_t image_size = parser.GetImageSize();
+				local_image_base = ::VirtualAlloc(nullptr, image_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+				if (!local_image_base)
+					isCheckCode = false;
+
+				if (local_image_base) {
+					BYTE* data = (BYTE*)parser.GetBaseAddress();
+					LARGE_INTEGER fileSize = parser.GetFileSize();
+
+					uint64_t real_image_base = (uint64_t)m->ImageBase;
+
+					// Copy image headers
+					memcpy(local_image_base, data, parser.GetHeadersSize());
+
+					// Copy image sections
+
+					for (auto i = 0; i < parser.GetSectionCount(); ++i) {
+						auto section = parser.GetSectionHeader(i);
+						if ((section[i].Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA) > 0)
+							continue;
+						auto local_section = reinterpret_cast<void*>(reinterpret_cast<uint64_t>(local_image_base)
+							+ section[i].VirtualAddress);
+						if (section[i].PointerToRawData + section[i].SizeOfRawData > fileSize.QuadPart) {
+							continue;
+						}
+						memcpy(local_section, reinterpret_cast<void*>(reinterpret_cast<uint64_t>(data)
+							+ section[i].PointerToRawData), section[i].SizeOfRawData);
+					}
+
+					std::vector<RelocInfo> relocs = parser.GetRelocs(local_image_base);
+					RelocateImageByDelta(relocs, real_image_base - parser.GetImageBase());
+				}
 			}
 			else {
 				moduleBase = 0;
 				moduleSize = 0;
 			}
-			CheckInlineHook(code, size, address, moduleBase, moduleSize);
+
+			CheckInlineHook(code, size, address,
+				moduleBase, moduleSize, isX64Module,isCheckCode,(PBYTE)local_image_base);
+
+			if (isCheckCode) {
+				if (local_image_base != nullptr) {
+					VirtualFree(local_image_base, 0, MEM_RELEASE);
+				}
+			}
 			free(code);
 			code = nullptr;
 		}
@@ -578,20 +852,28 @@ void CProcessInlineHookTable::CheckX64HookType1(cs_insn* insn, size_t j, size_t 
 	if (d2 == nullptr)
 		return;
 
+	cs_insn* ins2 = &insn[j + 1];
+
 	if (d1->x86.op_count != 2)
 		return;
 
-	cs_x86_op* op1, * op2;
+	cs_x86_op* op1, * op2, * op3;
 	op1 = &(d1->x86.operands[0]);
-	op2 = &(d2->x86.operands[1]);
+	op2 = &(d2->x86.operands[0]);
+	op3 = &(d1->x86.operands[1]);
 
-	if (op1->type != x86_op_type::X86_OP_REG)
+
+	if (op3 != nullptr)
+		if (op3->type != x86_op_type::X86_OP_IMM)
+			return;
+
+	if (op1->type != X86_OP_REG)
 		return;
 
 	if (op1->access != CS_AC_WRITE)
 		return;
 
-	if (op2->type != X86_OP_IMM)
+	if (op2->type != X86_OP_REG)
 		return;
 
 	if (op1->size != 8)
@@ -681,8 +963,8 @@ void CProcessInlineHookTable::CheckX64HookType2(cs_insn* insn, size_t j, size_t 
 		return;
 
 	InlineHookInfo info;
-	ULONG lowAddr = d1->x86.operands[0].imm;
-	ULONG highAddr = d2->x86.operands[1].imm;
+	ULONG_PTR lowAddr = d1->x86.operands[0].imm;
+	ULONG_PTR highAddr = d2->x86.operands[1].imm;
 	info.TargetAddress = ((ULONG_PTR)highAddr << 32) | lowAddr;
 	info.TargetModule = L"Unknown";
 	auto m = GetModuleByAddress(info.TargetAddress);
@@ -699,8 +981,8 @@ void CProcessInlineHookTable::CheckX64HookType2(cs_insn* insn, size_t j, size_t 
 }
 
 void CProcessInlineHookTable::CheckX64HookType4(cs_insn* insn, size_t j, size_t count, ULONG_PTR moduleBase, size_t moduleSize,
-	ULONG_PTR base, size_t size) {
-	cs_detail* d1, * d2;
+	ULONG_PTR base, size_t size, bool isCheckCode, PBYTE pMem) {
+	cs_detail* d1;
 	d1 = insn[j].detail;
 	if (d1 == nullptr)
 		return;
@@ -709,6 +991,7 @@ void CProcessInlineHookTable::CheckX64HookType4(cs_insn* insn, size_t j, size_t 
 
 	if (d1->x86.opcode[0] == 0xEB)
 		return;
+
 	if (d1->x86.op_count != 1)
 		return;
 	if (d1->x86.operands[0].type != CS_OP_IMM)
@@ -771,7 +1054,18 @@ void CProcessInlineHookTable::CheckX64HookType4(cs_insn* insn, size_t j, size_t 
 	if (codeAddress == 0)
 		return;
 	success = ::ReadProcessMemory(m_hProcess, (LPVOID)codeAddress, &dummy, sizeof(dummy), &dummy);
+
+	auto m = GetModuleByAddress(insn[j].address);
+	if (isCheckCode && m != nullptr) {
+		if (!CheckCode(insn[j].address, 5, (ULONG_PTR)m->ImageBase,
+			m->ModuleSize, pMem))
+			return;
+	}
+
 	InlineHookInfo info;
+	info.Name = L"Unknown";
+	if (m != nullptr)
+		info.Name = m->Name;
 	if (success) {
 		info.TargetAddress = codeAddress;
 	}
@@ -779,16 +1073,12 @@ void CProcessInlineHookTable::CheckX64HookType4(cs_insn* insn, size_t j, size_t 
 		info.TargetAddress = targetAddress;
 	}
 	info.TargetModule = L"Unknown";
-	auto m = GetModuleByAddress(info.TargetAddress);
+	m = GetModuleByAddress(info.TargetAddress);
 	if (m != nullptr) {
 		info.TargetModule = m->Path;
 	}
 	info.Type = HookType::x64HookType4;
 	info.Address = insn[j].address;
-	m = GetModuleByAddress(info.Address);
-	info.Name = L"Unknown";
-	if (m != nullptr)
-		info.Name = m->Name;
 	m_Table.data.info.push_back(info);
 }
 
@@ -859,4 +1149,45 @@ std::wstring CProcessInlineHookTable::GetSingleHookInfo(InlineHookInfo& info) {
 	text += L"\r\n";
 
 	return text.GetString();
+}
+
+bool CProcessInlineHookTable::CheckCode(ULONG_PTR addr, SIZE_T size, ULONG_PTR imageBase, ULONG imageSize, PBYTE pMem) {
+	bool isHooked = true;
+	void* code = nullptr;
+	do
+	{
+		code = ::VirtualAlloc(nullptr, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		if (!code)
+			break;
+		RtlZeroMemory(code, size);
+		SIZE_T bytes;
+		bool success = ::ReadProcessMemory(m_hProcess, (LPVOID)addr, code, size, &bytes);
+		if (!success)
+			break;
+		if (addr < imageBase)
+			break;
+		ULONG offset = addr - imageBase;
+		if (offset > imageSize) {
+			break;
+		}
+		BYTE* pOriCode = (BYTE*)pMem + offset;
+		if (memcmp(code, pOriCode, size) == 0) {
+			isHooked = false;
+		}
+	} while (false);
+	if (nullptr != code)
+		VirtualFree(code, 0, MEM_RELEASE);
+	
+	return isHooked;
+}
+
+void CProcessInlineHookTable::RelocateImageByDelta(std::vector<RelocInfo>& relocs, const uint64_t delta) {
+	for (const auto& current_reloc : relocs) {
+		for (auto i = 0u; i < current_reloc.count; ++i) {
+			const uint16_t type = current_reloc.item[i] >> 12;
+			const uint16_t offset = current_reloc.item[i] & 0xFFF;
+			if (type == IMAGE_REL_BASED_DIR64)
+				*reinterpret_cast<uint64_t*>(current_reloc.address + offset) += delta;
+		}
+	}
 }

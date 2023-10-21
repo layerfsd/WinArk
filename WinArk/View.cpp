@@ -105,7 +105,16 @@ bool CRegistryManagerView::GoToItem(PCWSTR path, PCWSTR name, PCWSTR data) {
 LRESULT CRegistryManagerView::OnCreate(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL&) {
 	::RegDeleteTree(HKEY_CURRENT_USER, DeletedPathBackup.Left(DeletedPathBackup.GetLength() - 1));
 
-	::ChangeWindowMessageFilterEx(m_hWnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
+	using PChangeWindowMessageFilterEx = BOOL(WINAPI*)(HWND, UINT, DWORD, void*);
+	HMODULE hUser32 = GetModuleHandle(L"user32.dll");
+	if (hUser32 != nullptr) {
+		PChangeWindowMessageFilterEx pChangeWindowMessageFilterEx
+			= (PChangeWindowMessageFilterEx)GetProcAddress(hUser32, "ChangeWindowMessageFilterEx");
+		if (pChangeWindowMessageFilterEx != nullptr) {
+			pChangeWindowMessageFilterEx(m_hWnd, WM_COPYDATA, 1, nullptr);
+		}
+	}
+
 	m_Locations.Load(L"Software\\YuanOS\\WinArk");
 	if (AppSettings::Get().Load(L"Software\\YuanOS\\WinArk"))
 		m_ReadOnly = AppSettings::Get().ReadOnly();
@@ -255,6 +264,9 @@ BOOL CRegistryManagerView::OnRightClickList(HWND h, int row, int col, const POIN
 		index = m_Items[row].Key ? 1 : 2;
 		if (m_Items[row].Type == REG_KEY_UP)
 			return FALSE;
+		if (index == 2 && m_Items[row].Type == REG_BINARY) {
+			menu.GetSubMenu(index).AppendMenu(MF_STRING, ID_EXPORT_BIN, L"Export Bin To File");
+		}
 	}
 
 	return TrackPopupMenu(menu.GetSubMenu(index), TPM_LEFTALIGN, pt.x, pt.y, 0, m_hWnd, nullptr);
@@ -1573,6 +1585,51 @@ LRESULT CRegistryManagerView::OnGotoKey(WORD, WORD, HWND, BOOL&) {
 		auto hItem = GotoKey(dlg.GetKey());
 		if(!hItem)
 			AtlMessageBox(m_hWnd, L"Failed to locate key", IDS_TITLE, MB_ICONERROR);
+	}
+	return 0;
+}
+
+LRESULT CRegistryManagerView::OnExportBin(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+	CSimpleFileDialog dlg(FALSE, nullptr, nullptr,
+		OFN_EXPLORER | OFN_ENABLESIZING | OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY,
+		L"Binary File\0*.bin\0Native Format\0*.*\0", m_hWnd);
+	if (dlg.DoModal() == IDOK) {
+		auto hFile = ::CreateFile(dlg.m_szFileName, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+		if (hFile == INVALID_HANDLE_VALUE)
+			return -1;
+
+		int row = m_List.GetSelectionMark();
+		
+		CString path = GetFullNodePath(m_Tree.GetSelectedItem());
+
+		auto key = Registry::OpenKey(path, KEY_READ);
+		if (!key)
+			return -1;
+
+		Registry::EnumKeyValues(key, [&](auto type, auto name, auto size) {
+			CString sname(name);
+			
+			auto data = std::make_unique<BYTE[]>(size + 3);
+			auto count{ size };
+			if (ERROR_SUCCESS != key.QueryValue(name, nullptr, data.get(), &count))
+				return true;
+
+			if (type != REG_BINARY) {
+				return true;
+			}
+
+			if (sname == m_Items[row].Name) {
+				WriteFile(hFile, data.get(), size, nullptr, nullptr);
+			}
+
+			return true;
+			});
+
+		::CloseHandle(hFile);
+		if ((INT_PTR)::ShellExecute(nullptr, L"open", L"explorer",
+			L"/select,\"" + CString(dlg.m_szFileName) + L"\"",
+			nullptr, SW_SHOWDEFAULT) < 32)
+			AtlMessageBox(*this, L"Failed to locate bin", IDS_TITLE, MB_ICONERROR);
 	}
 	return 0;
 }

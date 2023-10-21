@@ -11,6 +11,8 @@
 #include "Helpers.h"
 #include "Section.h"
 #include "SysMon.h"
+#include "detours.h"
+#include "kstring.h"
 
 #define LIMIT_INJECTION_TO_PROC L"notepad.exe"	// Process to limit injection to (only in Debugger builds)
 
@@ -533,7 +535,7 @@ bool EnumRegistryNotify(PLIST_ENTRY pListHead,CmCallbackInfo* info) {
 	return true;
 }
 
-bool EnumObCallbackNotify(POBJECT_TYPE objectType,ULONG callbackListOffset,ObCallbackInfo* info) {
+bool EnumObCallbackNotify(ULONG callbackListOffset,ObCallbackInfo* info) {
 	PLIST_ENTRY callbackListHead = nullptr;
 	PLIST_ENTRY nextEntry = nullptr;
 	POB_CALLBACK_ENTRY callbackEntry = nullptr;
@@ -543,25 +545,74 @@ bool EnumObCallbackNotify(POBJECT_TYPE objectType,ULONG callbackListOffset,ObCal
 		return false;
 	}
 
-	if (!objectType) {
-		return false;
+	int i = 0;
+
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*PsThreadType + callbackListOffset);
+	nextEntry = callbackListHead->Flink;
+	
+	while (nextEntry != callbackListHead) {
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
+		if (ExAcquireRundownProtection(&callbackEntry->RundownProtect)) {
+			KdPrint(("PreOperation %p, PostOperation: %p\n", callbackEntry->PreOperation, callbackEntry->PostOperation));
+			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_CREATE))
+				KdPrint(("Protect handle from creating\n"));
+			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_DUPLICATE))
+				KdPrint(("Protect handle from duplicating\n"));
+			info[i].Type = ObjectCallbackType::Thread;
+			info[i].Operations = callbackEntry->Operations;
+			info[i].CallbackEntry = callbackEntry;
+			info[i].PostOperation = callbackEntry->PostOperation;
+			info[i].PreOperation = callbackEntry->PreOperation;
+			info[i].RegistrationHandle = callbackEntry->RegistrationHandle;
+			info[i].Enabled = callbackEntry->Enabled;
+			i++;
+			ExReleaseRundownProtection(&callbackEntry->RundownProtect);
+		}
+		nextEntry = nextEntry->Flink;
 	}
 
-	callbackListHead = (PLIST_ENTRY)((PUCHAR)objectType + callbackListOffset);
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*PsProcessType + callbackListOffset);
 	nextEntry = callbackListHead->Flink;
-	int i = 0;
+
 	while (nextEntry != callbackListHead) {
-		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, EntryItemList);
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
+		if (ExAcquireRundownProtection(&callbackEntry->RundownProtect)) {
+			KdPrint(("PreOperation %p, PostOperation: %p\n", callbackEntry->PreOperation, callbackEntry->PostOperation));
+			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_CREATE))
+				KdPrint(("Protect handle from creating\n"));
+			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_DUPLICATE))
+				KdPrint(("Protect handle from duplicating\n"));
+			info[i].Type = ObjectCallbackType::Process;
+			info[i].Operations = callbackEntry->Operations;
+			info[i].CallbackEntry = callbackEntry;
+			info[i].PostOperation = callbackEntry->PostOperation;
+			info[i].PreOperation = callbackEntry->PreOperation;
+			info[i].RegistrationHandle = callbackEntry->RegistrationHandle;
+			info[i].Enabled = callbackEntry->Enabled;
+			i++;
+			ExReleaseRundownProtection(&callbackEntry->RundownProtect);
+		}
+		nextEntry = nextEntry->Flink;
+	}
+
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*ExDesktopObjectType + callbackListOffset);
+	nextEntry = callbackListHead->Flink;
+
+	while (nextEntry != callbackListHead) {
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
 		if (ExAcquireRundownProtection(&callbackEntry->RundownProtect)) {
 			LogInfo("PreOperation %p, PostOperation: %p\n", callbackEntry->PreOperation, callbackEntry->PostOperation);
 			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_CREATE))
 				LogInfo("Protect handle from creating\n");
 			if (FlagOn(callbackEntry->Operations, OB_OPERATION_HANDLE_DUPLICATE))
 				LogInfo("Protect handle from duplicating\n");
-
+			info[i].Type = ObjectCallbackType::Desktop;
+			info[i].Operations = callbackEntry->Operations;
+			info[i].CallbackEntry = callbackEntry;
 			info[i].PostOperation = callbackEntry->PostOperation;
 			info[i].PreOperation = callbackEntry->PreOperation;
 			info[i].RegistrationHandle = callbackEntry->RegistrationHandle;
+			info[i].Enabled = callbackEntry->Enabled;
 			i++;
 			ExReleaseRundownProtection(&callbackEntry->RundownProtect);
 		}
@@ -571,26 +622,42 @@ bool EnumObCallbackNotify(POBJECT_TYPE objectType,ULONG callbackListOffset,ObCal
 	return true;
 }
 
-LONG GetObCallbackCount(POBJECT_TYPE objectType, ULONG callbackListOffset) {
+LONG GetObCallbackCount(ULONG callbackListOffset) {
 	PLIST_ENTRY callbackListHead = nullptr;
 	PLIST_ENTRY nextEntry = nullptr;
 	POB_CALLBACK_ENTRY callbackEntry = nullptr;
 	volatile LONG count = 0;
 
-	if (!objectType) {
-		return count;
-	}
-
 	if (callbackListOffset == -1) {
 		return count;
 	}
 
-	callbackListHead = (PLIST_ENTRY)((PUCHAR)objectType + callbackListOffset);
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*PsThreadType + callbackListOffset);
 
 	nextEntry = callbackListHead->Flink;
 
 	while (nextEntry != callbackListHead) {
-		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, EntryItemList);
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
+		InterlockedIncrement(&count);
+		nextEntry = nextEntry->Flink;
+	}
+
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*PsProcessType + callbackListOffset);
+
+	nextEntry = callbackListHead->Flink;
+
+	while (nextEntry != callbackListHead) {
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
+		InterlockedIncrement(&count);
+		nextEntry = nextEntry->Flink;
+	}
+
+	callbackListHead = (PLIST_ENTRY)((PUCHAR)*ExDesktopObjectType + callbackListOffset);
+
+	nextEntry = callbackListHead->Flink;
+
+	while (nextEntry != callbackListHead) {
+		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, CallbackList);
 		InterlockedIncrement(&count);
 		nextEntry = nextEntry->Flink;
 	}
@@ -744,8 +811,12 @@ NTSTATUS RemoveSystemNotify(_In_ PVOID context) {
 			// PsSetCreateProcessNotifyRoutineEx2
 			PPsSetCreateProcessNotifyRoutineEx2 pPsSetCreateProcessNotifyRoutineEx2 = nullptr;
 			pPsSetCreateProcessNotifyRoutineEx2 = (PPsSetCreateProcessNotifyRoutineEx2)khook::GetApiAddress(L"PsSetCreateProcessNotifyRoutineEx2");
-			if (nullptr != pPsSetCreateProcessNotifyRoutineEx2)
+			if (nullptr != pPsSetCreateProcessNotifyRoutineEx2) {
 				status = pPsSetCreateProcessNotifyRoutineEx2(0, notify->Address, TRUE);
+			}
+			else {
+				status = STATUS_PROCEDURE_NOT_FOUND;
+			}
 			if (status == STATUS_PROCEDURE_NOT_FOUND||!NT_SUCCESS(status)) {
 				status = PsSetCreateProcessNotifyRoutineEx(reinterpret_cast<PCREATE_PROCESS_NOTIFY_ROUTINE_EX>(notify->Address), TRUE);
 			}
@@ -758,16 +829,6 @@ NTSTATUS RemoveSystemNotify(_In_ PVOID context) {
 		case NotifyType::CreateThreadNotify:
 		{
 			status = PsRemoveCreateThreadNotifyRoutine(reinterpret_cast<PCREATE_THREAD_NOTIFY_ROUTINE>(notify->Address));
-			break;
-		}
-		case NotifyType::ThreadObjectNotify:
-		{
-			RemoveObCallbackNotify(*PsThreadType, notify->Offset, notify->Address);
-			break;
-		}
-		case NotifyType::ProcessObjectNotify:
-		{
-			RemoveObCallbackNotify(*PsProcessType, notify->Offset, notify->Address);
 			break;
 		}
 
@@ -783,35 +844,16 @@ NTSTATUS RemoveSystemNotify(_In_ PVOID context) {
 	return status;
 }
 
-bool RemoveObCallbackNotify(POBJECT_TYPE objectType, ULONG callbackListOffset, void* handle) {
-	PLIST_ENTRY callbackListHead = nullptr;
-	PLIST_ENTRY nextEntry = nullptr;
-	POB_CALLBACK_ENTRY callbackEntry = nullptr;
-	ULONG count = 0;
-
-	if (!objectType) {
+bool RemoveObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry){
+	if (!pCallbackEntry) {
 		return false;
 	}
-
-	callbackListHead = (PLIST_ENTRY)((PUCHAR)objectType + callbackListOffset);
-	nextEntry = callbackListHead->Flink;
-	int i = 0;
-	while (nextEntry != callbackListHead) {
-		callbackEntry = CONTAINING_RECORD(nextEntry, OB_CALLBACK_ENTRY, EntryItemList);
-		if (ExAcquireRundownProtection(&callbackEntry->RundownProtect)) {
-			if (callbackEntry->RegistrationHandle == handle) {
-				break;
-			}
-			i++;
-			ExReleaseRundownProtection(&callbackEntry->RundownProtect);
-		}
-		nextEntry = nextEntry->Flink;
+	pCallbackEntry->RegistrationHandle->Count = 0;
+	bool ret =  RemoveEntryList(&pCallbackEntry->CallbackList);
+	if (!ret) {
+		ObUnRegisterCallbacks(pCallbackEntry->RegistrationHandle);
 	}
-	if (callbackEntry && callbackEntry->RegistrationHandle == handle) {
-		callbackEntry->RegistrationHandle->Count = 0;
-		RemoveEntryList(nextEntry);
-	}
-	return false;
+	return ret;
 }
 
 NTSTATUS EnumMiniFilterOperations(MiniFilterData* pData, OperationInfo* pInfo) {
@@ -984,4 +1026,117 @@ VOID PsCallImageNotifyRoutines(
 	}
 
 	KeLeaveCriticalRegion();
+}
+
+using PMinCryptIsFileRevoked = NTSTATUS(NTAPI*) (
+	PVOID Arg0,
+	PVOID Arg1,
+	ULONG Len
+	);
+
+PMinCryptIsFileRevoked g_pMinCryptIsFileRevoked = nullptr;
+
+
+NTSTATUS NTAPI HookMinCryptIsFileRevoked(PVOID Arg0, PVOID Arg1, ULONG Len) {
+	LogInfo("Arg0: %p,Arg1: %p,Size: %d\n", Arg0, Arg1, Len);
+	return STATUS_IMAGE_CERT_REVOKED;
+}
+
+bool DisableDriverLoad(CiSymbols* pSym) {
+	g_pMinCryptIsFileRevoked = (PMinCryptIsFileRevoked)pSym->MinCryptIsFileRevoked;
+	if (g_pMinCryptIsFileRevoked) {
+		NTSTATUS status = DetourAttach((PVOID*)&g_pMinCryptIsFileRevoked, HookMinCryptIsFileRevoked);
+		if (!NT_SUCCESS(status))
+			return false;
+		status = DetourTransactionCommit();
+		if (!NT_SUCCESS(status))
+			return false;
+	}
+	return true;
+}
+
+bool EnableDriverLoad() {
+	NTSTATUS status = DetourDetach((PVOID*)&g_pMinCryptIsFileRevoked, HookMinCryptIsFileRevoked);
+	if (!NT_SUCCESS(status))
+		return false;
+
+	status = DetourTransactionCommit();
+	if (!NT_SUCCESS(status))
+		return false;
+
+	return true;
+}
+
+using PI_MinCryptHashSearchCompare = int(NTAPI*) (
+	size_t Size,
+	PUCHAR Arg1,
+	PUCHAR Arg2
+	);
+
+PI_MinCryptHashSearchCompare g_pI_MinCryptHashSearchCompare = nullptr;
+
+int NTAPI HookI_MinCryptHashSearchCompare(size_t Size, PUCHAR Arg1, PUCHAR Arg2) {
+	do
+	{
+		LogInfo("Pid: %d\n", PsGetCurrentProcessId());
+		PCHAR hash = (PCHAR)ExAllocatePool(PagedPool, Size * 2 + 1);
+		if (hash == nullptr) {
+			break;
+		}
+		hash[0] = '\0';
+		CHAR hex[3];
+		for (int i = 0; i < Size; i++) {
+			sprintf_s(hex, "%02X", Arg1[i]);
+			strcat(hash, hex);
+		}
+		LogInfo(hash);
+		hash[0] = '\0';
+		for (int i = 0; i < Size; i++) {
+			sprintf_s(hex, "%02X", Arg2[i]);
+			strcat(hash, hex);
+		}
+		LogInfo(hash);
+		if (hash != nullptr) {
+			ExFreePool(hash);
+		}
+	} while (FALSE);
+	
+	return memcmp(Arg1, Arg2, Size);
+}
+
+bool StartLogDriverHash(CiSymbols* pSym) {
+	g_pI_MinCryptHashSearchCompare = (PI_MinCryptHashSearchCompare)pSym->I_MinCryptHashSearchCompare;
+	if (g_pI_MinCryptHashSearchCompare) {
+		NTSTATUS status = DetourAttach((PVOID*)&g_pI_MinCryptHashSearchCompare, HookI_MinCryptHashSearchCompare);
+		if (!NT_SUCCESS(status))
+			return false;
+		status = DetourTransactionCommit();
+		if (!NT_SUCCESS(status))
+			return false;
+	}
+	return true;
+}
+
+bool StopLogDriverHash() {
+	NTSTATUS status = DetourDetach((PVOID*)&g_pI_MinCryptHashSearchCompare, HookI_MinCryptHashSearchCompare);
+	if (!NT_SUCCESS(status))
+		return false;
+
+	status = DetourTransactionCommit();
+	if (!NT_SUCCESS(status))
+		return false;
+	
+	return true;
+}
+
+void DisableObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry) {
+	if (!pCallbackEntry)
+		return;
+	pCallbackEntry->Enabled = FALSE;
+}
+
+void EnableObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry) {
+	if (!pCallbackEntry)
+		return;
+	pCallbackEntry->Enabled = TRUE;
 }

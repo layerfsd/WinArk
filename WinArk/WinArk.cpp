@@ -37,7 +37,6 @@ void InitSymbols(std::wstring fileName) {
 		info.GetPdbSignature(VA, entry);
 		::GetCurrentDirectory(MAX_PATH, path);
 		wcscat_s(path, L"\\Symbols");
-		std::filesystem::create_directory(path);
 		bool success = info.SymDownloadSymbol(path);
 		if (!success)
 			g_hasSymbol = false;
@@ -119,6 +118,9 @@ int Run(LPTSTR lpstrCmdLine = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 		InitSymbols(L"win32k.sys");
 		if (!g_hasSymbol)
 			return -1;
+		InitSymbols(L"ci.dll");
+		if (!g_hasSymbol)
+			return -1;
 		InitSymbols(L"drivers\\fltmgr.sys");
 		if (!g_hasSymbol)
 			return -1;
@@ -129,8 +131,6 @@ int Run(LPTSTR lpstrCmdLine = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 
 	::WaitForSingleObject(hThread, INFINITE);
 	if (!g_hasSymbol||NULL == hThread) {
-		AtlMessageBox(0, L"Failed init symbols,\r\nWinArk will exit...\r\n", L"WinArk", MB_ICONERROR);
-		ClearSymbols();
 		return 0;
 	}
 	::CloseHandle(hThread);
@@ -227,13 +227,15 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 	HRESULT hRes = ::CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED|COINIT_DISABLE_OLE1DDE);
 	ATLASSERT(SUCCEEDED(hRes));
 	// add flags to support other controls
-	AtlInitCommonControls(ICC_BAR_CLASSES | ICC_BAR_CLASSES | ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES);
+	AtlInitCommonControls(ICC_BAR_CLASSES | ICC_LISTVIEW_CLASSES | ICC_TREEVIEW_CLASSES);
 	
 	hRes = _Module.Init(NULL, hInstance);
 	ATLASSERT(SUCCEEDED(hRes));
 	::SetPriorityClass(::GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 	::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 	::SetUnhandledExceptionFilter(SelfUnhandledExceptionFilter);
+
+	SecurityHelper::EnablePrivilege(SE_SYSTEM_ENVIRONMENT_NAME, true);
 
 	if (CheckInstall(lpstrCmdLine))
 		return 0;

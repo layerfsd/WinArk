@@ -72,15 +72,16 @@ typedef struct _CM_CALLBACK_CONTEXT_BLOCKEX
 struct _OB_CALLBACK_BLOCK;
 
 typedef struct _OB_CALLBACK_ENTRY {
-	LIST_ENTRY EntryItemList;
-	OB_OPERATION Operations;						// magic bit
-	ULONG Flags;
+	LIST_ENTRY CallbackList;
+	OB_OPERATION Operations;						// 1 for Creations, 2 for Duplications
+	BOOLEAN Enabled;
 	struct _OB_CALLBACK_BLOCK* RegistrationHandle;	// Points to the OB_CALLBACK_BLOCK used for ObUnRegisterCallback
 	POBJECT_TYPE ObjectType;
 	POB_PRE_OPERATION_CALLBACK PreOperation;
 	POB_POST_OPERATION_CALLBACK PostOperation;
 	EX_RUNDOWN_REF RundownProtect;
 }OB_CALLBACK_ENTRY, * POB_CALLBACK_ENTRY;
+
 
 
 // x86 0x10	0x24	16	36
@@ -110,7 +111,14 @@ extern Section g_sec;		// native section object
 extern Section g_secWow;	// Wow64 section object
 #endif // _WIN64
 
-
+//
+// Lego Callback
+//
+typedef
+VOID
+(NTAPI* PLEGO_NOTIFY_ROUTINE)(
+	_In_ PKTHREAD Thread
+	);
 
 void PushItem(LIST_ENTRY* entry);
 
@@ -120,9 +128,9 @@ void OnImageLoadNotify(_In_opt_ PUNICODE_STRING FullImageName, _In_ HANDLE Proce
 NTSTATUS OnRegistryNotify(PVOID context, PVOID arg1, PVOID arg2);
 
 bool EnumSystemNotify(PEX_CALLBACK callback, ULONG count,KernelCallbackInfo* info);
-bool EnumObCallbackNotify(POBJECT_TYPE objectType, ULONG callbackListOffset,ObCallbackInfo* info);
-LONG GetObCallbackCount(POBJECT_TYPE objectType, ULONG callbackListOffset);
-bool RemoveObCallbackNotify(POBJECT_TYPE objectType, ULONG callbackListOffset, void* handle);
+bool EnumObCallbackNotify(ULONG callbackListOffset,ObCallbackInfo* info);
+LONG GetObCallbackCount(ULONG callbackListOffset);
+bool RemoveObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry);
 
 bool EnumRegistryNotify(PLIST_ENTRY pListHead, CmCallbackInfo* info);
 
@@ -141,6 +149,11 @@ PEX_CALLBACK_ROUTINE_BLOCK ExReferenceCallBackBlock(
 LOGICAL ExFastRefDereference(
 	_Inout_ PEX_FAST_REF_S FastRef,
 	_In_ PVOID Object
+);
+
+VOID ExDereferenceCallBackBlock(
+	_Inout_ PEX_CALLBACK Callback,
+	_In_ PEX_CALLBACK_ROUTINE_BLOCK CallbackBlock
 );
 
 EX_FAST_REF_S ExFastReference(
@@ -190,3 +203,12 @@ VOID PsCallImageNotifyRoutines(
 	_Inout_ PIMAGE_INFO_EX ImageInfoEx,
 	_In_ PVOID FileObject
 );
+
+bool DisableDriverLoad(CiSymbols* pSym);
+bool EnableDriverLoad();
+
+bool StartLogDriverHash(CiSymbols* pSym);
+bool StopLogDriverHash();
+
+void DisableObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry);
+void EnableObCallbackNotify(POB_CALLBACK_ENTRY pCallbackEntry);

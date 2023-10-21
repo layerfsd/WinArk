@@ -20,8 +20,9 @@
 #include "EtwView.h"
 #include "TraceManager.h"
 #include "QuickFindDlg.h"
-#include "LogonSessionsView.h"
-#include "BypassDlg.h"
+#include "ExplorerView.h"
+#include "MiscView.h"
+
 
 
 // c2061 在一个类还没实现前，就互相交叉使用，前置声明不能解决
@@ -29,8 +30,8 @@ enum class TabColumn :int {
 	Process, KernelModule, 
 	Kernel, 
 	KernelHook,
-	Network,Driver,Registry,Device,Windows,Service,Config,Etw,LogonSession,
-	BypassDectect,
+	Network,Driver,Registry,Device,Windows,Service,Config,Etw,
+	Explorer,Misc
 };
 
 DEFINE_ENUM_FLAG_OPERATORS(TabColumn);
@@ -97,8 +98,10 @@ public:
 	void InitKernelView();
 	void InitConfigView();
 	void InitEtwView();
-	void InitLogonSessionsView();
-	void InitBypassDectectView();
+	
+	void InitExplorerView();
+	void InitMiscView();
+
 
 	void LoadSettings(PCWSTR filename = nullptr);
 	void SaveSettings(PCWSTR filename = nullptr);
@@ -178,6 +181,7 @@ private:
 	
 	CMultiPaneStatusBarCtrl m_StatusBar;
 
+	CExplorerView m_ExplorerView;
 	CRegistryManagerView m_RegView;
 	CDeviceManagerView m_DevView;
 	CWindowsView m_WinView;
@@ -185,7 +189,7 @@ private:
 	CKernelView* m_KernelView{ nullptr };
 
 	CSystemConfigDlg m_SysConfigView;
-	CBypassDlg m_BypassView;
+	CMiscView* m_MiscView{ nullptr };
 
 	CEtwView* m_pEtwView{ nullptr };
 	TraceManager m_tm;
@@ -193,12 +197,13 @@ private:
 	CFont m_MonoFont;
 	CQuickFindDlg* m_pQuickFindDlg{ nullptr };
 
-	CLogonSessionsView* m_pLogonSessionView{ nullptr };
+	
+	int _opacity = 255;
 
 	CString m_StatusText;
 
 	// table array
-	HWND m_hwndArray[16];
+	HWND m_hwndArray[20];
 	// current select tab
 	int _index = 0;
 

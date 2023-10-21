@@ -63,14 +63,17 @@ LRESULT CGotoKeyDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lPa
 		{ L"tab completion",LR"(HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Command Processor)"},
 		{ L"Service Group Order",LR"(HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\ServiceGroupOrder)"},
 		{ L"Group Order List",LR"(HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\GroupOrderList)"},
-		{ L"WinHttpAutoProxySvc",LR"(HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\WinHttpAutoProxySvc)"}
+		{ L"WinHttpAutoProxySvc",LR"(HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\WinHttpAutoProxySvc)"},
+		{ L"VulnerableDriverBlocklistEnable",LR"(HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\CI\Config)"},
+		{ L"Known Dlls",LR"(HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs)"},
+		{ L"Lsa",LR"(HKLM\SYSTEM\CurrentControlSet\Control\Lsa)"}
 	};
 
 	for (const auto& [name, path] : locations) {
 		ListItem item{ name,path};
 		m_Items.push_back(item);
 	}
-	UpdateList(m_List, m_Items.size());
+	UpdateList(m_List, static_cast<int>(m_Items.size()));
 
 	return 0;
 }

@@ -144,6 +144,12 @@ struct ResourceInfo {
 	bool IsId{ false };
 };
 
+struct RelocInfo {
+	uint64_t address;
+	uint16_t* item;
+	uint32_t count;
+};
+
 class PEParser final {
 public:
 	explicit PEParser(const wchar_t* path);
@@ -165,6 +171,9 @@ public:
 	void* GetBaseAddress() const;
 
 	ULONGLONG GetImageBase() const;
+
+	DWORD GetImageSize() const;
+	DWORD GetHeadersSize() const;
 
 	ULONG GetEAT() const;
 
@@ -210,6 +219,10 @@ public:
 	unsigned RvaToFileOffset(unsigned rva) const;
 	IMAGE_SECTION_HEADER* GetSections();
 
+	LARGE_INTEGER GetFileSize() const;
+
+	std::vector<RelocInfo> GetRelocs(void* imageBase);
+
 private:
 	bool IsObjectPe64() const;
 	void CheckValidity();
@@ -218,6 +231,7 @@ private:
 	//CString GetResourceName(void* data) const;
 
 	PBYTE _address{ nullptr };
+	LARGE_INTEGER _fileSize{ 0 };
 	HMODULE _module{ nullptr };
 	HANDLE _hMemMap{ nullptr };
 	HANDLE _hFile{ INVALID_HANDLE_VALUE };

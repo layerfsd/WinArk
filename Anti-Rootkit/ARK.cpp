@@ -18,6 +18,7 @@
 #include "..\KernelLibrary\VadHelpers.h"
 #include "..\KernelLibrary\Helpers.h"
 #include "..\KernelLibrary\WinExtHosts.h"
+#include "..\KernelLibrary\FileManager.h"
 
 
 // SE_IMAGE_SIGNATURE_TYPE
@@ -786,7 +787,7 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 						) {
 						// Process the element pointed to by p
 						PiDDBCacheEntry* entry = (PiDDBCacheEntry*)p;
-						LogInfo("%wZ,%d,%d\n", entry->DriverName, entry->LoadStatus, entry->TimeDateStamp);
+						LogInfo("%wZ,%d,%d\n", &entry->DriverName, entry->LoadStatus, entry->TimeDateStamp);
 						// 首先得放得下结构体
 						if (size < sizeof(PiDDBCacheData)) {
 							status = STATUS_INFO_LENGTH_MISMATCH;
@@ -855,13 +856,19 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 				}
 				ULONG size = dic.OutputBufferLength;
 				// MmUnloadedDrivers MmLastUnloadedDriver
-				PUNLOADED_DRIVER MmUnloadDrivers = nullptr;
-				MmUnloadDrivers = *(PUNLOADED_DRIVER*)info->pMmUnloadedDrivers;
-				LogInfo("MmUnloadDriversAddress %p\n", MmUnloadDrivers);
+				PUNLOADED_DRIVER pMmUnloadDrivers = nullptr;
+				if (!MmIsAddressValid(info->pMmUnloadedDrivers)) {
+					break;
+				}
+				pMmUnloadDrivers = *(PUNLOADED_DRIVER*)info->pMmUnloadedDrivers;
+				LogInfo("MmUnloadDriversAddress %p\n", pMmUnloadDrivers);
+				if (!MmIsAddressValid(pMmUnloadDrivers)) {
+					break;
+				}
 				for (ULONG i = 0; i < info->Count; ) {
-					LogInfo("%wZ,%p,%p,%X\n", MmUnloadDrivers[i].Name, MmUnloadDrivers[i].StartAddress,
-						MmUnloadDrivers[i].EndAddress,
-						MmUnloadDrivers[i].CurrentTime);
+					LogInfo("%wZ,%p,%p,%X\n", &pMmUnloadDrivers[i].Name, pMmUnloadDrivers[i].StartAddress,
+						pMmUnloadDrivers[i].EndAddress,
+						pMmUnloadDrivers[i].CurrentTime);
 					// 首先得放得下结构体
 					if (size < sizeof(UnloadedDriverData)) {
 						status = STATUS_INFO_LENGTH_MISMATCH;
@@ -870,19 +877,19 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 					// 减小size part1
 					size -= sizeof(UnloadedDriverData);
 					// 填充数据
-					pData->CurrentTime = MmUnloadDrivers[i].CurrentTime;
-					pData->EndAddress = MmUnloadDrivers[i].EndAddress;
-					pData->StartAddress = MmUnloadDrivers[i].StartAddress;
-					pData->StringLen = MmUnloadDrivers[i].Name.Length;
+					pData->CurrentTime = pMmUnloadDrivers[i].CurrentTime;
+					pData->EndAddress = pMmUnloadDrivers[i].EndAddress;
+					pData->StartAddress = pMmUnloadDrivers[i].StartAddress;
+					pData->StringLen = pMmUnloadDrivers[i].Name.Length;
 					// 检查是否能存放字符串
-					if (size < MmUnloadDrivers[i].Name.Length + sizeof(WCHAR)) {
+					if (size < pMmUnloadDrivers[i].Name.Length + sizeof(WCHAR)) {
 						status = STATUS_INFO_LENGTH_MISMATCH;
 						break;
 					}
 					// 存储字符串
 					pData->StringOffset = sizeof(UnloadedDriverData);
 					auto pString = (WCHAR*)((PUCHAR)pData + pData->StringOffset);
-					memcpy(pString, MmUnloadDrivers[i].Name.Buffer, pData->StringLen);
+					memcpy(pString, pMmUnloadDrivers[i].Name.Buffer, pData->StringLen);
 					// 减小size part2
 					size -= pData->StringLen;
 					// 减小size part3
@@ -935,7 +942,7 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 					p = RtlEnumerateGenericTableAvl(PiDDBCacheTable, FALSE)) {
 					// Process the element pointed to by p
 					PiDDBCacheEntry* entry = (PiDDBCacheEntry*)p;
-					//LogInfo("%wZ,%d,%d\n", entry->DriverName, entry->LoadStatus, entry->TimeDateStamp);
+					
 					// part1 结构体大小
 					size += sizeof(PiDDBCacheData);
 					// part2 字符串长度+'\0'
@@ -962,13 +969,16 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 			}
 			auto info = (UnloadedDriversInfo*)Irp->AssociatedIrp.SystemBuffer;
 			// MmUnloadedDrivers MmLastUnloadedDriver
-			PUNLOADED_DRIVER MmUnloadDrivers = nullptr;
-			MmUnloadDrivers = *(PUNLOADED_DRIVER*)info->pMmUnloadedDrivers;
+			PUNLOADED_DRIVER pMmUnloadDrivers = nullptr;
+			pMmUnloadDrivers = *(PUNLOADED_DRIVER*)info->pMmUnloadedDrivers;
+			if (!MmIsAddressValid(pMmUnloadDrivers)) {
+				break;
+			}
 			for (ULONG i = 0; i < info->Count; i++) {
 				// part1 结构体大小
 				size += sizeof(UnloadedDriverData);
 				// part2 字符串长度+L'\0'
-				size += MmUnloadDrivers[i].Name.Length + sizeof(WCHAR);
+				size += pMmUnloadDrivers[i].Name.Length + sizeof(WCHAR);
 			}
 			*(ULONG*)Irp->AssociatedIrp.SystemBuffer = size;
 			status = STATUS_SUCCESS;
@@ -976,35 +986,23 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 			break;
 		}
 
-		case IOCTL_ARK_ENUM_OBJECT_CALLBACK_NOTIFY:
+		case IOCTL_ARK_ENUM_OBJECT_CALLBACK:
 		{
 			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
 				status = STATUS_INVALID_PARAMETER;
 				break;
 			}
-			if (dic.InputBufferLength < sizeof(KernelNotifyInfo)) {
-				status = STATUS_INVALID_BUFFER_SIZE;
+			if (dic.InputBufferLength < sizeof(ULONG)) {
+				status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
-			
-			KernelNotifyInfo* pInfo = (KernelNotifyInfo*)Irp->AssociatedIrp.SystemBuffer;
-			POBJECT_TYPE pObjectType = nullptr;
-			switch (pInfo->Type) {
-				case NotifyType::ProcessObjectNotify:
-					pObjectType = *PsProcessType;
-					break;
-
-				case NotifyType::ThreadObjectNotify:
-					pObjectType = *PsThreadType;
-					break;
-			}
-			LONG count = GetObCallbackCount(pObjectType, pInfo->Offset);
+			ULONG offset = *(ULONG*)Irp->AssociatedIrp.SystemBuffer;
+			LONG count = GetObCallbackCount(offset);
 			if (dic.OutputBufferLength < sizeof(ObCallbackInfo) * count) {
 				status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
-			
-			bool success = EnumObCallbackNotify(pObjectType, pInfo->Offset,(ObCallbackInfo*)Irp->AssociatedIrp.SystemBuffer);
+			bool success = EnumObCallbackNotify(offset,(ObCallbackInfo*)Irp->AssociatedIrp.SystemBuffer);
 			if (success) {
 				len = dic.OutputBufferLength;
 				status = STATUS_SUCCESS;
@@ -1012,32 +1010,22 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 			break;
 		}
 
-		case IOCTL_ARK_GET_OBJECT_CALLBACK_NOTIFY_COUNT:
+		case IOCTL_ARK_GET_OBJECT_CALLBACK_COUNT:
 		{
 			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
 				status = STATUS_INVALID_PARAMETER;
 				break;
 			}
-			if (dic.InputBufferLength < sizeof(KernelNotifyInfo)) {
-				status = STATUS_INVALID_BUFFER_SIZE;
+			if (dic.InputBufferLength < sizeof(ULONG)) {
+				status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
 			if (dic.OutputBufferLength < sizeof(LONG)) {
 				status = STATUS_BUFFER_TOO_SMALL;
 				break;
 			}
-			KernelNotifyInfo* pInfo = (KernelNotifyInfo*)Irp->AssociatedIrp.SystemBuffer;
-			POBJECT_TYPE pObjectType = nullptr;
-			switch (pInfo->Type) {
-				case NotifyType::ProcessObjectNotify:
-					pObjectType = *PsProcessType;
-					break;
-
-				case NotifyType::ThreadObjectNotify:
-					pObjectType = *PsThreadType;
-					break;
-			}
-			LONG count = GetObCallbackCount(pObjectType, pInfo->Offset);
+			ULONG offset = *(ULONG*)Irp->AssociatedIrp.SystemBuffer;
+			LONG count = GetObCallbackCount(offset);
 			*(LONG*)Irp->AssociatedIrp.SystemBuffer = count;
 			len = sizeof(LONG);
 			status = STATUS_SUCCESS;
@@ -1615,6 +1603,187 @@ NTSTATUS AntiRootkitDeviceControl(PDEVICE_OBJECT, PIRP Irp) {
 			status = STATUS_SUCCESS;
 			*(ULONG*)Irp->AssociatedIrp.SystemBuffer = count;
 			len = sizeof(count);
+			break;
+		}
+
+		case IOCTL_ARK_FORCE_DELETE_FILE:
+		{
+			auto name = (WCHAR*)Irp->AssociatedIrp.SystemBuffer;
+			if (!name) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+
+			auto bufferLen = dic.InputBufferLength;
+			if (bufferLen > 1024) {
+				// just too long for a directory
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+
+			// make sure there is a NULL terminator somewhere
+			name[bufferLen / sizeof(WCHAR) - 1] = L'\0';
+
+			auto dosNameLen = ::wcslen(name);
+			if (dosNameLen < 3) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+
+			UNICODE_STRING ntName;
+			status = FileManager::ConvertDosNameToNtName(name, &ntName);
+			LogInfo("Delete File %ws <=> %wZ\n", &name, ntName);
+
+			status = FileManager::DeleteFile(&ntName);
+
+			// An attempt has been made to remove a file or directory that cannot be deleted.
+			if (status == STATUS_CANNOT_DELETE || status == STATUS_SHARING_VIOLATION) {
+				FileManager fileMgr;
+				status = fileMgr.ForceDeleteFile(name);
+				if (!NT_SUCCESS(status)) {
+					LogError("Force delete file failed 0x%x\n", status);
+				}
+			}
+			// A file cannot be opened because the share access flags are incompatible.
+			if (!NT_SUCCESS(status)) {
+				LogError("Force delete file failed 0x%x\n", status);
+			}
+			ExFreePool(ntName.Buffer);
+			break;
+		}
+		case IOCTL_ARK_DISABLE_DRIVER_LOAD:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(CiSymbols)) {
+				status = STATUS_INVALID_BUFFER_SIZE;
+				break;
+			}
+			auto pSym = (CiSymbols*)Irp->AssociatedIrp.SystemBuffer;
+			bool success = DisableDriverLoad(pSym);
+			if (!success)
+				break;
+			len = 0;
+			status = STATUS_SUCCESS;
+			break;
+		}
+		case IOCTL_ARK_ENABLE_DRIVER_LOAD:
+		{
+			bool success = EnableDriverLoad();
+			len = 0;
+			if (success)
+				status = STATUS_SUCCESS;
+			else
+				status = STATUS_UNSUCCESSFUL;
+			break;
+		}
+		case IOCTL_ARK_START_LOG_DRIVER_HASH:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(CiSymbols)) {
+				status = STATUS_INVALID_BUFFER_SIZE;
+				break;
+			}
+			auto pSym = (CiSymbols*)Irp->AssociatedIrp.SystemBuffer;
+			bool success = StartLogDriverHash(pSym);
+			if (!success)
+				break;
+			len = 0;
+			status = STATUS_SUCCESS;
+			break;
+			break;
+		}
+		case IOCTL_ARK_STOP_LOG_DRIVER_HASH:
+		{
+			bool success = StopLogDriverHash();
+			len = 0;
+			if (success)
+				status = STATUS_SUCCESS;
+			else
+				status = STATUS_UNSUCCESSFUL;
+			break;
+		}
+		case IOCTL_ARK_GET_LEGO_NOTIFY_ROUTINE:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(PVOID)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+
+			if (dic.OutputBufferLength < sizeof(PVOID)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			void* pPspLegoNotifyRoutine = *(PVOID*)Irp->AssociatedIrp.SystemBuffer;
+			PHYSICAL_ADDRESS physical = MmGetPhysicalAddress(pPspLegoNotifyRoutine);
+			if (!physical.QuadPart) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			PLEGO_NOTIFY_ROUTINE pRoutine = *(PLEGO_NOTIFY_ROUTINE*)pPspLegoNotifyRoutine;
+			*(PLEGO_NOTIFY_ROUTINE*)Irp->AssociatedIrp.SystemBuffer = pRoutine;
+			status = STATUS_SUCCESS;
+			len = sizeof(PVOID);
+			break;
+		}
+		case IOCTL_ARK_REMOVE_OB_CALLBACK:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(ULONG_PTR)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			POB_CALLBACK_ENTRY pCallbackEntry = *(POB_CALLBACK_ENTRY*)Irp->AssociatedIrp.SystemBuffer;
+			bool success = RemoveObCallbackNotify(pCallbackEntry);
+			if (success) {
+				status = STATUS_SUCCESS;
+			}
+			else
+				status = STATUS_UNSUCCESSFUL;
+			break;
+		}
+
+		case IOCTL_ARK_DISABLE_OB_CALLBACK:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(ULONG_PTR)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			POB_CALLBACK_ENTRY pCallbackEntry = *(POB_CALLBACK_ENTRY*)Irp->AssociatedIrp.SystemBuffer;
+			DisableObCallbackNotify(pCallbackEntry);
+			status = STATUS_SUCCESS;
+			break;
+		}
+
+		case IOCTL_ARK_ENABLE_OB_CALLBACK:
+		{
+			if (Irp->AssociatedIrp.SystemBuffer == nullptr) {
+				status = STATUS_INVALID_PARAMETER;
+				break;
+			}
+			if (dic.InputBufferLength < sizeof(ULONG_PTR)) {
+				status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			POB_CALLBACK_ENTRY pCallbackEntry = *(POB_CALLBACK_ENTRY*)Irp->AssociatedIrp.SystemBuffer;
+			EnableObCallbackNotify(pCallbackEntry);
+			status = STATUS_SUCCESS;
 			break;
 		}
 	}

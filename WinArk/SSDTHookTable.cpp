@@ -149,7 +149,7 @@ bool CSSDTHookTable::CompareItems(const SystemServiceInfo& s1, const SystemServi
 }
 
 void CSSDTHookTable::Refresh() {
-	for (int i = 0; i < _limit; i++) {
+	for (ULONG i = 0; i < _limit; i++) {
 		void* address = DriverHelper::GetSSDTApiAddress(i);
 		if (m_Table.data.info[i].OriginalAddress != (uintptr_t)address) {
 			m_Table.data.info[i].Hooked = true;
@@ -171,7 +171,7 @@ ULONG_PTR CSSDTHookTable::GetOrignalAddress(DWORD number) {
 	}
 
 	uintptr_t rva = (uintptr_t)_KiServiceTable - (uintptr_t)_kernelBase;
-	ULONGLONG imageBase = (ULONGLONG)_fileMapVA;
+	ULONG_PTR imageBase = (ULONG_PTR)_fileMapVA;
 #ifdef _WIN64
 	auto CheckAddressMethod = [&]()->bool {
 		auto pEntry = (char*)_fileMapVA + rva + 8 * number;
@@ -200,9 +200,21 @@ ULONG_PTR CSSDTHookTable::GetOrignalAddress(DWORD number) {
 			rva = v2;
 	}
 #else
-	auto pEntry = (char*)_fileMapVA + (DWORD)rva + sizeof(ULONG) * number;
-	auto entry = *(ULONG*)pEntry;
-	rva = entry - _imageBase;
+	auto pEntry = (ULONG*)((char*)_fileMapVA + rva);
+	ULONG value = pEntry[number];
+	ULONG v1 = value - _imageBase;
+	ULONG v2 = value - imageBase;
+	ULONG high1 = (value & 0xF000000);
+	ULONG high2 = (imageBase & 0xF000000);
+	bool isNeedFix = false;
+	if (high1 == high2) {
+		isNeedFix = true;
+	}
+	if (v1 < DWORD_MAX && !isNeedFix) {
+		rva = v1;
+	}
+	else
+		rva = v2;
 #endif 
 
 	return rva + (ULONG_PTR)_kernelBase;

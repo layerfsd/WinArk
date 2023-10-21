@@ -51,8 +51,26 @@ bool DriverHelper::InstallDriver(bool justCopy,void* pBuffer,DWORD size) {
 	::GetSystemDirectory(path, MAX_PATH);
 	::wcscat_s(path, L"\\Drivers\\AntiRootkit.sys");
 	wil::unique_hfile hFile(::CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_SYSTEM, nullptr));
-	if (!hFile)
+	if (!hFile) {
+		DWORD error = ::GetLastError();
+		if (error == ERROR_SHARING_VIOLATION) {
+			wil::unique_schandle hScm(::OpenSCManager(nullptr, nullptr, SC_MANAGER_ALL_ACCESS));
+			if (!hScm)
+				return false;
+
+			wil::unique_schandle hService(::OpenService(hScm.get(), L"AntiRootkit", SERVICE_ALL_ACCESS));
+			if (!hService)
+				return false;
+
+			SERVICE_STATUS status;
+			bool success = true;
+			::QueryServiceStatus(hService.get(), &status);
+			if (status.dwCurrentState == SERVICE_RUNNING) {
+				return true;
+			}
+		}
 		return false;
+	}
 
 	DWORD bytes = 0;
 	::WriteFile(hFile.get(), pBuffer, size, &bytes, nullptr);
@@ -105,7 +123,8 @@ HANDLE DriverHelper::OpenHandle(void* pObject, ACCESS_MASK access) {
 
 	DWORD bytes;
 	HANDLE hObject;
-	return ::DeviceIoControl(_hDevice, IOCTL_ARK_OPEN_OBJECT, &data, sizeof(data), &hObject, sizeof(hObject), &bytes, nullptr) ? hObject : nullptr;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_OPEN_OBJECT, &data, sizeof(data), 
+		&hObject, sizeof(hObject), &bytes, nullptr) ? hObject : nullptr;
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights
@@ -386,23 +405,23 @@ ULONG DriverHelper::GetImageNotifyCount(PULONG* pCount) {
 	return count;
 }
 
-ULONG DriverHelper::GetPiDDBCacheDataSize(ULONG_PTR Address) {
+ULONG DriverHelper::GetPiDDBCacheDataSize(ULONG_PTR addr) {
 	if (!OpenDevice())
 		return false;
 
 	DWORD bytes;
 	DWORD size = 0;
-	::DeviceIoControl(_hDevice, IOCTL_ARK_GET_PIDDBCACHE_DATA_SIZE, &Address, sizeof(ULONG_PTR),
+	::DeviceIoControl(_hDevice, IOCTL_ARK_GET_PIDDBCACHE_DATA_SIZE, &addr, sizeof(ULONG_PTR),
 		&size, sizeof(DWORD), &bytes, nullptr);
 	return size;
 }
 
-bool DriverHelper::EnumPiDDBCacheTable(ULONG_PTR Address,PVOID buffer,ULONG size) {
+bool DriverHelper::EnumPiDDBCacheTable(ULONG_PTR addr,PVOID buffer,ULONG size) {
 	if (!OpenDevice())
 		return false;
 
 	DWORD bytes;
-	::DeviceIoControl(_hDevice, IOCTL_ARK_ENUM_PIDDBCACHE_TABLE, &Address, sizeof(ULONG_PTR),
+	::DeviceIoControl(_hDevice, IOCTL_ARK_ENUM_PIDDBCACHE_TABLE, &addr, sizeof(ULONG_PTR),
 		buffer, size, &bytes, nullptr);
 	return true;
 }
@@ -439,23 +458,23 @@ ULONG DriverHelper::GetUnloadedDriverDataSize(UnloadedDriversInfo* pInfo) {
 	return size;
 }
 
-bool DriverHelper::EnumObCallbackNotify(KernelNotifyInfo* pNotifyInfo,ObCallbackInfo* pCallbackInfo,ULONG size) {
+bool DriverHelper::EnumObCallbackNotify(ULONG offset,ObCallbackInfo* pCallbackInfo,ULONG size) {
 	if (!OpenDevice())
 		return false;
 
 	DWORD bytes;
-	::DeviceIoControl(_hDevice,IOCTL_ARK_ENUM_OBJECT_CALLBACK_NOTIFY, pNotifyInfo, sizeof(NotifyInfo),
+	::DeviceIoControl(_hDevice,IOCTL_ARK_ENUM_OBJECT_CALLBACK, &offset, sizeof(ULONG),
 		pCallbackInfo, size, &bytes, nullptr);
 	return true;
 }
 
-LONG DriverHelper::GetObCallbackCount(KernelNotifyInfo* pNotifyInfo) {
+LONG DriverHelper::GetObCallbackCount(ULONG offset) {
 	if (!OpenDevice())
 		return 0;
 
 	DWORD bytes;
 	LONG count = 0;
-	::DeviceIoControl(_hDevice, IOCTL_ARK_GET_OBJECT_CALLBACK_NOTIFY_COUNT, pNotifyInfo, sizeof(NotifyInfo),
+	::DeviceIoControl(_hDevice, IOCTL_ARK_GET_OBJECT_CALLBACK_COUNT, &offset, sizeof(offset),
 		&count, sizeof(LONG), &bytes, nullptr);
 	return count;
 }
@@ -497,7 +516,7 @@ bool DriverHelper::GetDriverObjectRoutines(PCWSTR name, PVOID pRoutines) {
 
 	DWORD bytes;
 	LONG count = 0;
-	DWORD len = ::wcslen(name) + 1;
+	DWORD len = static_cast<ULONG>(::wcslen(name) + 1);
 	len = len * sizeof(WCHAR);
 
 	return ::DeviceIoControl(_hDevice, IOCTL_ARK_GET_DRIVER_OBJECT_ROUTINES, (LPVOID)name, len,
@@ -685,4 +704,86 @@ ULONG DriverHelper::GetKernelInlineHookCount() {
 	::DeviceIoControl(_hDevice, IOCTL_ARK_GET_KERNEL_INLINE_HOOK_COUNT, nullptr, 0,
 		&count, sizeof(ULONG), &bytes, nullptr);
 	return count;
+}
+
+bool DriverHelper::ForceDeleteFile(const wchar_t* fileName) {
+	if (!OpenDevice())
+		return 0;
+	DWORD bytes;
+	bool success = ::DeviceIoControl(_hDevice, IOCTL_ARK_FORCE_DELETE_FILE,
+		(PVOID)fileName, (::wcslen(fileName) + 1) * sizeof(WCHAR),
+		nullptr, 0, &bytes, nullptr);
+	return success;
+}
+
+bool DriverHelper::DisableDriverLoad(CiSymbols* pSym) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_DISABLE_DRIVER_LOAD, pSym, sizeof(CiSymbols),
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::EnableDriverLoad() {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_ENABLE_DRIVER_LOAD, nullptr, 0,
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::StartLogDriverHash(CiSymbols* pSym) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_START_LOG_DRIVER_HASH, pSym, sizeof(CiSymbols),
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::StopLogDriverHash() {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_STOP_LOG_DRIVER_HASH, nullptr, 0,
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::GetLegoNotifyRoutine(void* pPspLegoNotifyRoutine, void* pRoutine) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_GET_LEGO_NOTIFY_ROUTINE, pPspLegoNotifyRoutine, sizeof(PVOID),
+		pRoutine, sizeof(PVOID), &bytes, nullptr);
+}
+
+bool DriverHelper::RemoveObCallback(ULONG_PTR addr) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_REMOVE_OB_CALLBACK, &addr, sizeof(ULONG_PTR),
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::DisableObCallback(ULONG_PTR addr) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_DISABLE_OB_CALLBACK, &addr, sizeof(ULONG_PTR),
+		nullptr, 0, &bytes, nullptr);
+}
+
+bool DriverHelper::EnableObCallback(ULONG_PTR addr) {
+	if (!OpenDevice())
+		return false;
+
+	DWORD bytes;
+	return ::DeviceIoControl(_hDevice, IOCTL_ARK_ENABLE_OB_CALLBACK, &addr, sizeof(ULONG_PTR),
+		nullptr, 0, &bytes, nullptr);
 }

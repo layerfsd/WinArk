@@ -180,9 +180,21 @@ ULONG_PTR CShadowSSDTHookTable::GetOrignalAddress(DWORD number) {
 			rva = v2;
 	}
 #else
-	auto pEntry = (char*)_fileMapVA + (DWORD)rva + sizeof(ULONG) * number;
-	auto entry = *(ULONG*)pEntry;
-	rva = entry - _imageBase;
+	auto pEntry = (ULONG*)((char*)_fileMapVA + rva);
+	ULONG value = pEntry[number];
+	ULONG v1 = value - _imageBase;
+	ULONG v2 = value - imageBase;
+	ULONG high1 = (value & 0xF000000);
+	ULONG high2 = (imageBase & 0xF000000);
+	bool isNeedFix = false;
+	if (high1 == high2) {
+		isNeedFix = true;
+	}
+	if (v1 < DWORD_MAX && !isNeedFix) {
+		rva = v1;
+	}
+	else
+		rva = v2;
 #endif 
 
 	return rva + (ULONG_PTR)_win32kBase;
@@ -215,7 +227,7 @@ void CShadowSSDTHookTable::GetShadowSSDTEntry() {
 }
 
 void CShadowSSDTHookTable::Refresh() {
-	for (int i = 0; i < _limit; i++) {
+	for (ULONG i = 0; i < _limit; i++) {
 		void* address = DriverHelper::GetShadowSSDTApiAddress(i);
 		if (m_Table.data.info[i].OriginalAddress != (uintptr_t)address) {
 			m_Table.data.info[i].Hooked = true;

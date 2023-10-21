@@ -2,6 +2,7 @@
 #include "KernelInlineHookTable.h"
 #include "DriverHelper.h"
 #include "SymbolHelper.h"
+#include "SortHelper.h"
 
 
 CKernelInlineHookTable::CKernelInlineHookTable(BarInfo& bars, TableInfo& table)
@@ -69,6 +70,17 @@ int CKernelInlineHookTable::ParseTableEntry(CString& s, char& mask, int& select,
 }
 
 bool CKernelInlineHookTable::CompareItems(const KernelInlineHookInfo& s1, const KernelInlineHookInfo& s2, int col, bool asc) {
+	switch (static_cast<Column>(col))
+	{
+		case Column::Module:
+			return SortHelper::SortStrings(s1.TargetModule, s2.TargetModule, asc);
+			break;
+		case Column::TargetAddress:
+			return SortHelper::SortNumbers(s1.TargetAddress, s2.TargetAddress, asc);
+			break;
+		default:
+			break;
+	}
 	return false;
 }
 
@@ -171,7 +183,7 @@ void CKernelInlineHookTable::Refresh() {
 	if (count == 0) {
 		return;
 	}
-	SIZE_T size = (count + 10) * sizeof(KernelInlineHookData);
+	DWORD size = (count + 10) * sizeof(KernelInlineHookData);
 	wil::unique_virtualalloc_ptr<> buffer(::VirtualAlloc(nullptr, size,
 		MEM_COMMIT, PAGE_READWRITE));
 	KernelInlineHookData* pData = (KernelInlineHookData*)buffer.get();

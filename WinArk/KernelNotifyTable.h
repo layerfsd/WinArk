@@ -4,9 +4,7 @@
 
 enum class CallbackType {
 	CreateProcessNotify,CreateThreadNotify,LoadImageNotify,
-	ProcessObPostOperationNotify,ThreadObPostOperationNotify,
-	ProcessObPreOperationNotify, ThreadObPreOperationNotify,
-	RegistryNotify
+	RegistryNotify,LegoNotify,
 };
 
 struct CallbackInfo {

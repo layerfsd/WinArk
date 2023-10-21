@@ -5,6 +5,8 @@
 
 #pragma once
 
+
+
 // https://docs.microsoft.com/zh-cn/cpp/porting/modifying-winver-and-win32-winnt?view=msvc-170
 // Change these values to use different versions
 #define WINVER		0x0601		// Windows 7
@@ -15,9 +17,7 @@
 // 解决标准库std::min与min宏冲突
 #define NOMINMAX
 
-#ifndef __cpp_lib_format
-#define __cpp_lib_format
-#endif
+#include <winsdkver.h>
 
 #include <atlbase.h>
 #include <atlstr.h>
@@ -55,9 +55,13 @@ extern CAppModule _Module;
 #include <algorithm>
 #include <map>
 #include <format>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 
 #include <tdh.h>
 #include <evntcons.h>
+#include <taskschd.h>
 
 #include "ThemeSystem.h"
 #include "WinSysCore.h"

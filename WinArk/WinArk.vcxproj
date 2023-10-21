@@ -21,7 +21,7 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <ProjectGuid>{B8B52E8A-3A29-449D-B324-7A72994F83E2}</ProjectGuid>
-    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -95,16 +95,19 @@
   <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <VcpkgUseStatic>true</VcpkgUseStatic>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level2</WarningLevel>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_WIN64;_WINDOWS;STRICT;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
       <AdditionalIncludeDirectories>..\PEParser;..\WinSysCore;..\PdbParser;..\Utils</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <ExceptionHandling>false</ExceptionHandling>
@@ -112,7 +115,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
     </Link>
@@ -250,12 +253,15 @@
     <ClCompile Include="BinaryValueDlg.cpp" />
     <ClCompile Include="BypassDlg.cpp" />
     <ClCompile Include="CallStackDlg.cpp" />
+    <ClCompile Include="ExplorerView.cpp" />
     <ClCompile Include="ExtensionTable.cpp" />
     <ClCompile Include="ExtensionTableDlg.cpp" />
     <ClCompile Include="HexEdit.cpp" />
     <ClCompile Include="KernelEATHookDlg.cpp" />
     <ClCompile Include="KernelEATHookTable.cpp" />
     <ClCompile Include="KernelInlineHookTable.cpp" />
+    <ClCompile Include="MiscView.cpp" />
+    <ClCompile Include="ObjectCallbackTable.cpp" />
     <ClCompile Include="ProcessATHookDlg.cpp" />
     <ClCompile Include="ChangeValueCommand.cpp" />
     <ClCompile Include="ClipboardHelper.cpp" />
@@ -285,7 +291,6 @@
     <ClCompile Include="EventPropertiesDlg.cpp" />
     <ClCompile Include="EventsDlg.cpp" />
     <ClCompile Include="ExportDlg.cpp" />
-    <ClCompile Include="FileManagerView.cpp" />
     <ClCompile Include="FileObjectType.cpp" />
     <ClCompile Include="FileVersionInfoHelper.cpp" />
     <ClCompile Include="FilterConfiguration.cpp" />
@@ -362,6 +367,7 @@
     <ClCompile Include="ServiceTable.cpp" />
     <ClCompile Include="Settings.cpp" />
     <ClCompile Include="ShadowSSDTTable.cpp" />
+    <ClCompile Include="ShellMgr.cpp" />
     <ClCompile Include="SortHelpler.cpp" />
     <ClCompile Include="SSDTHookTable.cpp" />
     <ClCompile Include="stdafx.cpp">
@@ -375,8 +381,11 @@
     <ClCompile Include="SymbolHelper.cpp" />
     <ClCompile Include="SymbolicLinkObjectType.cpp" />
     <ClCompile Include="SymbolFileInfo.cpp" />
+    <ClCompile Include="SysInfoView.cpp" />
     <ClCompile Include="SystemConfigDlg.cpp" />
     <ClCompile Include="Table.cpp" />
+    <ClCompile Include="TaskHelper.cpp" />
+    <ClCompile Include="TaskSchedView.cpp" />
     <ClCompile Include="Theme.cpp" />
     <ClCompile Include="ThemeColor.cpp" />
     <ClCompile Include="ThemeHelper.cpp" />
@@ -406,12 +415,18 @@
     <ClInclude Include="BinaryValueDlg.h" />
     <ClInclude Include="BypassDlg.h" />
     <ClInclude Include="CallStackDlg.h" />
+    <ClInclude Include="ComHelper.h" />
+    <ClInclude Include="CustomListView.h" />
+    <ClInclude Include="CustomSplitterWindow.h" />
+    <ClInclude Include="ExplorerView.h" />
     <ClInclude Include="ExtensionTable.h" />
     <ClInclude Include="ExtensionTableDlg.h" />
     <ClInclude Include="HexEdit.h" />
     <ClInclude Include="KernelEATHookDlg.h" />
     <ClInclude Include="KernelEATHookTable.h" />
     <ClInclude Include="KernelInlineHookTable.h" />
+    <ClInclude Include="MiscView.h" />
+    <ClInclude Include="ObjectCallbackTable.h" />
     <ClInclude Include="ProcessATHookDlg.h" />
     <ClInclude Include="ChangeValueCommand.h" />
     <ClInclude Include="ClipboardHelper.h" />
@@ -442,7 +457,6 @@
     <ClInclude Include="EventPropertiesDlg.h" />
     <ClInclude Include="EventsDlg.h" />
     <ClInclude Include="ExportDlg.h" />
-    <ClInclude Include="FileManagerView.h" />
     <ClInclude Include="FileObjectType.h" />
     <ClInclude Include="FileVersionInfoHelper.h" />
     <ClInclude Include="FilterConfiguration.h" />
@@ -525,6 +539,7 @@
     <ClInclude Include="ServiceTable.h" />
     <ClInclude Include="Settings.h" />
     <ClInclude Include="ShadowSSDTTable.h" />
+    <ClInclude Include="ShellMgr.h" />
     <ClInclude Include="SizeGrip.h" />
     <ClInclude Include="SortedFilteredVector.h" />
     <ClInclude Include="SortHelper.h" />
@@ -535,8 +550,11 @@
     <ClInclude Include="SymbolHelper.h" />
     <ClInclude Include="SymbolicLinkObjectType.h" />
     <ClInclude Include="SymbolFileInfo.h" />
+    <ClInclude Include="SysInfoView.h" />
     <ClInclude Include="SystemConfigDlg.h" />
     <ClInclude Include="Table.h" />
+    <ClInclude Include="TaskHelper.h" />
+    <ClInclude Include="TaskSchedView.h" />
     <ClInclude Include="Theme.h" />
     <ClInclude Include="ThemeColor.h" />
     <ClInclude Include="ThemeHelper.h" />
@@ -562,6 +580,7 @@
     <ResourceCompile Include="WinArk.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\action.ico" />
     <Image Include="res\arrow_down_blue.ico" />
     <Image Include="res\arrow_up_blue.ico" />
     <Image Include="res\autoscroll.ico" />
@@ -576,6 +595,7 @@
     <Image Include="res\filter-edit.ico" />
     <Image Include="res\filter.ico" />
     <Image Include="res\find.ico" />
+    <Image Include="res\Folder.ico" />
     <Image Include="res\folder_open.ico" />
     <Image Include="res\gear.ico" />
     <Image Include="res\goto.ico" />
@@ -584,6 +604,7 @@
     <Image Include="res\heap.ico" />
     <Image Include="res\heap2.ico" />
     <Image Include="res\icon1.ico" />
+    <Image Include="res\icon2.ico" />
     <Image Include="res\letter-k.ico" />
     <Image Include="res\letter-u.ico" />
     <Image Include="res\memory.ico" />
@@ -599,13 +620,16 @@
     <Image Include="res\properties.ico" />
     <Image Include="res\refresh.ico" />
     <Image Include="res\registry.ico" />
+    <Image Include="res\Schedule.ico" />
     <Image Include="res\search.ico" />
     <Image Include="res\stack.ico" />
     <Image Include="res\Stop.ico" />
     <Image Include="res\storage.ico" />
+    <Image Include="res\task.ico" />
     <Image Include="res\threads-delete.ico" />
     <Image Include="res\threads-new.ico" />
     <Image Include="res\threads.ico" />
+    <Image Include="res\Timer.ico" />
     <Image Include="res\tools.ico" />
     <Image Include="res\WinArk.ico" />
     <Image Include="res\window.ico" />

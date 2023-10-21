@@ -92,6 +92,12 @@
 #define IDD_DIALOG1                     282
 #define IDD_SCYLLA                      282
 #define IDR_DBG_CONTEXT                 286
+#define IDR_TASK_CONTEXT                287
+#define IDI_FOLDER                      289
+#define IDI_TASK_ROOT                   290
+#define IDI_TASK                        291
+#define IDI_ACTION                      292
+#define IDI_TIMER                       293
 #define IDC_CONFIG_LIST                 1000
 #define IDC_VALUE                       1001
 #define IDC_APPICON                     1002
@@ -224,6 +230,10 @@
 #define IDC_STATIC_OEPADDRESS           1119
 #define IDC_GROUP_DUMP                  1120
 #define IDC_DEBUGGER_LIST               1121
+#define IDC_BOOT_MODE                   1122
+#define IDC_DISABLE_DRIVER_LOAD         1123
+#define IDC_CHECK1                      1124
+#define IDC_LOG_HASH                    1124
 #define ID_PROCESS_THREADS              32775
 #define ID_PROCESS_MODULES              32776
 #define ID_PROCESS_KILL                 32777
@@ -413,14 +423,43 @@
 #define ID_KERNEL_INLINEHOOK_REFRESH    32982
 #define ID_KERNEL_INLINEHOOK_COPY       32983
 #define ID_KERNEL_INLINEHOOK_EXPORT     32984
+#define ID_SERVICE_STARTALL             32985
+#define ID_SERVICE_START_ALL            32986
+#define ID_SERVICE_EXPORTBYPID          32987
+#define ID_SERVICE_EXPORT_BY_PID        32988
+#define ID_TASK_DISABLE                 32989
+#define ID_TASK_RUN                     32990
+#define ID_TASK_STOP                    32991
+#define ID_TASK_EXPORT                  32992
+#define ID_TASK_DELETE                  32993
+#define ID_TASK_PROPERTIES              32994
+#define ID_TASK_ENABLE                  32995
+#define ID_OBJECTCALLBACK_REMOVE        32996
+#define ID_OBJECTCALLBACK_ENABLE        32997
+#define ID_OBJECTCALLBACK_DISABLE       32998
+#define ID_OBJECTCALLBACK_REMOVEBYCOMPANYNAME 32999
+#define ID_OBJECTCALLBACK_COPY          33000
+#define ID_OBJECTCALLBACK_EXPORT        33001
+#define ID_OBJECTCALLBACK_REMOVE_BY_NAME 33002
+#define ID_OBJ_CALLBACK_ENABLE          33003
+#define ID_OBJ_CALLBACK_DISABLE         33004
+#define ID_OBJ_CALLBACK_REMOVE          33005
+#define ID_OB_CALLBACK_REMOVE_BY_NAME   33006
+#define ID_OB_CALLBACK_REMOVE           33007
+#define ID_OB_CALLBACK_DISABLE          33008
+#define ID_OB_CALLBACK_ENABLE           33009
+#define ID_OB_CALLBACK_COPY             33010
+#define ID_OB_CALLBACK_EXPORT           33011
+#define ID_OBJECTCALLBACK_REFRESH       33012
+#define ID_OB_CALLBACK_REFRESH          33013
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        287
-#define _APS_NEXT_COMMAND_VALUE         32985
-#define _APS_NEXT_CONTROL_VALUE         1122
+#define _APS_NEXT_RESOURCE_VALUE        294
+#define _APS_NEXT_COMMAND_VALUE         33014
+#define _APS_NEXT_CONTROL_VALUE         1125
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
