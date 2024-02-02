@@ -510,6 +510,9 @@
     <ClCompile Include="ObjectCallbackTable.cpp">
       <Filter>Table</Filter>
     </ClCompile>
+    <ClCompile Include="KernelInlineHookDlg.cpp">
+      <Filter>Dialogs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -1019,6 +1022,9 @@
     <ClInclude Include="ObjectCallbackTable.h">
       <Filter>Table</Filter>
     </ClInclude>
+    <ClInclude Include="KernelInlineHookDlg.h">
+      <Filter>Dialogs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="WinArk.rc">
@@ -1183,6 +1189,42 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="res\Timer.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\donate.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\laptop.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\folder_closed.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\link.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\folder_accessdenied.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\hive.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\hive-accessdenied.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\folderup.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Binary.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\text.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\number-4.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\number-8.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

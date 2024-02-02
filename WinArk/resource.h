@@ -98,6 +98,19 @@
 #define IDI_TASK                        291
 #define IDI_ACTION                      292
 #define IDI_TIMER                       293
+#define IDB_DONATE                      294
+#define IDI_COMPUTER                    295
+#define IDI_FOLDER_CLOSED               296
+#define IDI_FOLDER_LINK                 297
+#define IDI_FOLDER_ACCESSDENIED         298
+#define IDI_HIVE                        299
+#define IDI_HIVE_ACCESSDENIED           300
+#define IDI_FOLDER_UP                   301
+#define IDI_BINARY                      302
+#define IDI_TEXT                        303
+#define IDI_DWORD                       304
+#define IDI_ICON3                       305
+#define IDI_QWORD                       305
 #define IDC_CONFIG_LIST                 1000
 #define IDC_VALUE                       1001
 #define IDC_APPICON                     1002
@@ -452,14 +465,20 @@
 #define ID_OB_CALLBACK_EXPORT           33011
 #define ID_OBJECTCALLBACK_REFRESH       33012
 #define ID_OB_CALLBACK_REFRESH          33013
+#define ID_SERVICE_REFRESH              33014
+#define ID_INLINEHOOK_RESTORE           33015
+#define ID_INLINEHOOK_REFRESH33016      33016
+#define ID_INLINEHOOK_REFRESH_ALL       33017
+#define ID_KERNEL_INLINEHOOKSCAN        33018
+#define ID_KERNEL_INLINE_HOOK_SCAN      33019
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        294
-#define _APS_NEXT_COMMAND_VALUE         33014
-#define _APS_NEXT_CONTROL_VALUE         1125
+#define _APS_NEXT_RESOURCE_VALUE        306
+#define _APS_NEXT_COMMAND_VALUE         33020
+#define _APS_NEXT_CONTROL_VALUE         1126
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

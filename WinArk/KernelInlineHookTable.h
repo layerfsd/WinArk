@@ -17,7 +17,7 @@ class CKernelInlineHookTable :
 public:
 	DECLARE_WND_CLASS_EX(NULL, CS_DBLCLKS | CS_VREDRAW | CS_HREDRAW, COLOR_WINDOW);
 
-	CKernelInlineHookTable(BarInfo& bars, TableInfo& table);
+	CKernelInlineHookTable(BarInfo& bars, TableInfo& table, ULONG_PTR base = 0);
 	int ParseTableEntry(CString& s, char& mask, int& select, KernelInlineHookInfo& info,
 		int column);
 	bool CompareItems(const KernelInlineHookInfo& s1, const KernelInlineHookInfo& s2,
@@ -42,6 +42,8 @@ public:
 		MESSAGE_HANDLER(WM_KEYDOWN, OnKeyDown)
 		MESSAGE_HANDLER(WM_SYSKEYDOWN, OnSysKeyDown)
 		COMMAND_ID_HANDLER(ID_KERNEL_INLINEHOOK_REFRESH,OnRefresh)
+		COMMAND_ID_HANDLER(ID_KERNEL_INLINEHOOK_COPY,OnHookCopy)
+		COMMAND_ID_HANDLER(ID_KERNEL_INLINEHOOK_EXPORT,OnHookExport)
 	END_MSG_MAP()
 
 
@@ -67,9 +69,16 @@ public:
 
 	void Refresh();
 
+	LRESULT OnHookCopy(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnHookExport(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	std::wstring GetSingleHookInfo(KernelInlineHookInfo& info);
+
+	bool CheckIsHooked(ULONG_PTR address,ULONG_PTR targetAddress,KernelHookType type);
+
 private:
 	CString TypeToString(KernelHookType type);
 	enum class Column {
 		HookObject, HookType, Address, TargetAddress, Module
 	};
+	ULONG_PTR _base;
 };

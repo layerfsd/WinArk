@@ -64,38 +64,23 @@ ImagehlpSymbol::~ImagehlpSymbol() {
 
 SymbolHandler::SymbolHandler(HANDLE hProcess, PCSTR searchPath,DWORD symOptions){
 	m_hProcess = hProcess;
-	::SymSetOptions(symOptions);
-	::SymInitialize(m_hProcess, searchPath, true);
 }
 
 SymbolHandler::~SymbolHandler() {
-	::SymCleanup(m_hProcess);
 	if (m_hProcess != ::GetCurrentProcess())
 		::CloseHandle(m_hProcess);
 }
 
 ULONG64 SymbolHandler::LoadSymbolsForModule(PCSTR moduleName,DWORD64 baseAddress,DWORD dllSize) {
-	_address = SymLoadModuleEx(m_hProcess, nullptr, moduleName, nullptr, baseAddress, dllSize, nullptr, 0);
+	_address = SymLoadModule64(m_hProcess, nullptr, moduleName, moduleName, baseAddress, dllSize);
+	if (_address == 0)
+		_address = SymLoadModuleEx(m_hProcess, nullptr, moduleName, nullptr, baseAddress, dllSize, nullptr, 0);
 	return _address;
 }
 
 HANDLE SymbolHandler::GetHandle() const {
 	return m_hProcess;
 }
-
-//void SymbolHandler::EnumSymbols(string mask) {
-//	SymEnumSymbols(m_hProcess, _baseAddress, mask.c_str(), [](PSYMBOL_INFO pSymInfo,ULONG SymbolSize,PVOID UserContext) {
-//		printf("0x%p %s\n", pSymInfo->Address, pSymInfo->Name);
-//		return TRUE;
-//		}, this);
-//}
-//
-//void SymbolHandler::EnumTypes(string mask) {
-//	SymEnumTypesByName(_hProcess, _baseAddress, mask.c_str(), [](PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID UserContext) {
-//		printf("0x%p %s\n", pSymInfo->Address, pSymInfo->Name);
-//		return TRUE;
-//		}, this);
-//}
 
 std::unique_ptr<SymbolInfo> SymbolHandler::GetSymbolFromName(PCSTR name) {
 	auto symbol = std::make_unique<SymbolInfo>();
